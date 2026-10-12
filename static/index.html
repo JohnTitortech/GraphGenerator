@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graph Generator</title>
+<style>
+  :root { --bg:#f7f7f9; --fg:#1c1c22; --card:#fff; --accent:#4f46e5; --muted:#6b7280; --border:#d9d9e3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14141a; --fg:#ececf1; --card:#1e1e26; --muted:#9ca3af; --border:#34343f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px;
+         background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,sans-serif; }
+  main { width:100%; max-width:520px; background:var(--card); border:1px solid var(--border);
+         border-radius:16px; padding:28px; }
+  h1 { margin:0 0 6px; font-size:1.4rem; }
+  p.sub { margin:0 0 20px; color:var(--muted); font-size:.92rem; line-height:1.5; }
+  #drop { border:2px dashed var(--border); border-radius:12px; padding:36px 16px;
+          text-align:center; cursor:pointer; transition:.15s; }
+  #drop.over { border-color:var(--accent); background:rgba(79,70,229,.06); }
+  #drop strong { display:block; margin-bottom:4px; }
+  #drop span { color:var(--muted); font-size:.85rem; }
+  button { margin-top:16px; width:100%; padding:12px; border:0; border-radius:10px;
+           background:var(--accent); color:#fff; font-size:1rem; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  #status { margin-top:14px; font-size:.9rem; min-height:1.2em; white-space:pre-wrap; }
+  .err { color:#dc2626; } .ok { color:#16a34a; }
+  small { display:block; margin-top:18px; color:var(--muted); font-size:.78rem; line-height:1.5; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Graph Generator</h1>
+  <p class="sub">Upload project (.zip), lalu unduh <code>graph.json</code> dan <code>GRAPH_REPORT.md</code> hasil Graphify.</p>
+
+  <div id="drop">
+    <strong id="label">Klik atau seret file .zip ke sini</strong>
+    <span>Maks 20 MB</span>
+  </div>
+  <input id="file" type="file" accept=".zip" hidden>
+  <button id="go" disabled>Buat graph</button>
+  <div id="status"></div>
+
+  <small>Mode kode saja (tanpa LLM): hanya file kode yang dianalisis. File diproses sementara di server dan langsung dihapus setelah selesai.</small>
+</main>
+
+<script>
+const drop = document.getElementById("drop"), input = document.getElementById("file"),
+      go = document.getElementById("go"), statusEl = document.getElementById("status"),
+      label = document.getElementById("label");
+let chosen = null;
+
+function pick(f) {
+  if (!f) return;
+  if (!f.name.toLowerCase().endsWith(".zip")) { setStatus("File harus berformat .zip", "err"); return; }
+  chosen = f; label.textContent = f.name; go.disabled = false; setStatus("");
+}
+function setStatus(msg, cls = "") { statusEl.textContent = msg; statusEl.className = cls; }
+
+drop.onclick = () => input.click();
+input.onchange = () => pick(input.files[0]);
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); pick(e.dataTransfer.files[0]); };
+
+go.onclick = async () => {
+  if (!chosen) return;
+  go.disabled = true; setStatus("Memproses… (bisa beberapa puluh detik)");
+  try {
+    const fd = new FormData(); fd.append("file", chosen);
+    const res = await fetch("/api/generate", { method: "POST", body: fd });
+    if (!res.ok) {
+      let msg = "Gagal (" + res.status + ")";
+      try { msg = (await res.json()).detail || msg; } catch {}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "graphify-out.zip"; a.click();
+    URL.revokeObjectURL(a.href);
+    setStatus("Selesai! graphify-out.zip terunduh.", "ok");
+  } catch (e) { setStatus(e.message, "err"); }
+  finally { go.disabled = false; }
+};
+</script>
+</body>
+</html>
